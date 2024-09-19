@@ -52,6 +52,10 @@
             color: #34495e;
         }
 
+        .input-wrapper {
+            padding: 0 15px;
+        }
+
         input[type="password"],
         input[type="text"],
         select,
@@ -63,6 +67,7 @@
             font-size: 14px;
             margin-bottom: 20px;
             transition: border-color 0.3s ease;
+            box-sizing: border-box;
         }
 
         input[type="password"]:focus,
@@ -75,8 +80,9 @@
 
         .button-container {
             display: flex;
-            justify-content: space-between;
+            justify-content: center; /* Center the login button */
             margin-top: 20px;
+            padding: 0 15px;
         }
 
         button {
@@ -89,6 +95,10 @@
             font-weight: 700;
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s;
+        }
+
+        .main-container .button-container {
+            justify-content: space-between; /* Keep the main buttons spread out */
         }
 
         .main-container .button-container button {
@@ -118,7 +128,7 @@
             border: 1px solid #bdc3c7;
             border-radius: 6px;
             padding: 15px;
-            margin-bottom: 20px;
+            margin: 0 15px 20px;
             background-color: #ecf0f1;
         }
 
@@ -170,7 +180,7 @@
     <div class="container">
         <div class="login-container active">
             <h1>Gentleman's Chat Simulator</h1>
-            <div>
+            <div class="input-wrapper">
                 <label for="password">Enter Password:</label>
                 <input type="password" id="password" name="password">
             </div>
@@ -181,7 +191,7 @@
 
         <div class="main-container">
             <h1>Gentleman's Chat Simulator</h1>
-            <div>
+            <div class="input-wrapper">
                 <label for="modelSelect">Who are you messaging as?</label>
                 <select id="modelSelect">
                     <option value="Sebastian Loredo">Sebastian Loredo</option>
@@ -198,7 +208,7 @@
                 </select>
             </div>
             <div id="chatContainer"></div>
-            <div>
+            <div class="input-wrapper">
                 <textarea id="userInput" rows="3" placeholder="Type your message here..."></textarea>
             </div>
             <div class="button-container">
@@ -211,6 +221,7 @@
     </div>
 
     <script>
+        // The JavaScript remains the same as in the previous version
         let lastAiMessage = '';
 
         document.getElementById('login').addEventListener('click', function () {
