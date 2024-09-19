@@ -61,8 +61,8 @@
         }
 
         button {
-            display: block;
-            width: 100%;
+            display: inline-block;
+            width: 48%;
             padding: 10px;
             background-color: #1877f2;
             color: white;
@@ -72,6 +72,11 @@
             font-weight: 700;
             cursor: pointer;
             transition: background-color 0.3s;
+            margin-right: 2%;
+        }
+
+        button:last-child {
+            margin-right: 0;
         }
 
         button:hover {
@@ -164,11 +169,14 @@
                 <textarea id="userInput" rows="3" placeholder="Type your message here..."></textarea>
             </div>
             <button id="sendMessage">Send Message</button>
+            <button id="otherReply">Other Reply</button>
             <div id="loading" class="loading" style="display: none;"></div>
         </div>
     </div>
 
     <script>
+        let lastAiMessage = '';
+
         document.getElementById('login').addEventListener('click', function () {
             const enteredPassword = document.getElementById('password').value;
 
@@ -191,19 +199,21 @@
             .catch(error => console.error('Error:', error));
         });
         
-        document.getElementById('sendMessage').addEventListener('click', async function () {
-            const userInput = document.getElementById('userInput').value;
+        async function sendMessage(isOtherReply = false) {
+            const userInput = isOtherReply ? lastAiMessage : document.getElementById('userInput').value;
             const selectedModel = document.getElementById('modelSelect').value;
             const chatContainer = document.getElementById('chatContainer');
 
-            // Display user message
-            const userMessageDiv = document.createElement('div');
-            userMessageDiv.className = 'message user-message';
-            userMessageDiv.textContent = userInput;
-            chatContainer.appendChild(userMessageDiv);
+            if (!isOtherReply) {
+                // Display user message
+                const userMessageDiv = document.createElement('div');
+                userMessageDiv.className = 'message user-message';
+                userMessageDiv.textContent = `${selectedModel}: ${userInput}`;
+                chatContainer.appendChild(userMessageDiv);
 
-            // Clear user input
-            document.getElementById('userInput').value = '';
+                // Clear user input
+                document.getElementById('userInput').value = '';
+            }
 
             // Show loading indicator
             document.getElementById('loading').style.display = 'block';
@@ -228,6 +238,9 @@
                 aiMessageDiv.textContent = data.response;
                 chatContainer.appendChild(aiMessageDiv);
 
+                // Store last AI message
+                lastAiMessage = data.response;
+
                 // Scroll to bottom of chat container
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             } catch (error) {
@@ -235,7 +248,10 @@
                 alert('An error occurred while generating the response.');
                 document.getElementById('loading').style.display = 'none';
             }
-        });
+        }
+
+        document.getElementById('sendMessage').addEventListener('click', () => sendMessage(false));
+        document.getElementById('otherReply').addEventListener('click', () => sendMessage(true));
     </script>
 </body>
 
