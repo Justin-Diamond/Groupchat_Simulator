@@ -25,9 +25,11 @@ app.use(session({
 
 // Middleware to log session info
 app.use((req, res, next) => {
+    console.log('--------------------');
+    console.log('New Request:');
     console.log('Session ID:', req.sessionID);
-    console.log('Session:', req.session);
     console.log('Is Authenticated:', req.session.authenticated);
+    console.log('--------------------');
     next();
 });
 
@@ -37,14 +39,19 @@ app.post('/login', (req, res) => {
     const enteredPassword = req.body.password;
     const secretPassword = process.env.SECRET_PASSWORD;
 
+    console.log('--------------------');
+    console.log('Login Attempt:');
+    console.log('Session ID:', req.sessionID);
+
     if (enteredPassword === secretPassword) {
         req.session.authenticated = true;
-        console.log('Login successful. Session:', req.session);
+        console.log('Login successful');
         res.status(200).json({ success: true });
     } else {
         console.log('Login failed');
         res.status(401).json({ success: false, message: 'Incorrect password' });
     }
+    console.log('--------------------');
 });
 
 app.post('/generate-response', async (req, res) => {
@@ -57,6 +64,11 @@ app.post('/generate-response', async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const assistantId = process.env.OPENAI_ASSISTANT_ID;
 
+    console.log('--------------------');
+    console.log('New Message:');
+    console.log('Session ID:', req.sessionID);
+    console.log('User Input:', prompt);
+
     // Initialize message history for the session if it doesn't exist
     if (!req.session.messageHistory) {
         req.session.messageHistory = [];
@@ -68,11 +80,16 @@ app.post('/generate-response', async (req, res) => {
         req.session.messageHistory.shift(); // Remove the oldest message if we exceed MAX_HISTORY
     }
 
+    console.log('Updated Message History:');
+    req.session.messageHistory.forEach((msg, index) => {
+        console.log(`[${index + 1}] ${msg}`);
+    });
+
     // Create a context-rich prompt
     const contextPrompt = req.session.messageHistory.join('\n');
 
-    // Log the full context prompt
-    console.log(`System Prompt for session ${req.session.id}:`, contextPrompt);
+    console.log('Full Context Prompt:');
+    console.log(contextPrompt);
 
     try {
         // Step 1: Create a thread
@@ -95,7 +112,7 @@ app.post('/generate-response', async (req, res) => {
         }
 
         const thread = await createThreadResponse.json();
-        console.log(`Thread created for session ${req.session.id}:`, thread);
+        console.log('Thread created:', thread.id);
 
         // Step 2: Run the assistant
         const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
@@ -117,7 +134,7 @@ app.post('/generate-response', async (req, res) => {
         }
 
         const run = await runResponse.json();
-        console.log('Run created:', run);
+        console.log('Run created:', run.id);
 
         // Step 3: Polling for completion
         let runStatus = await checkRunStatus(thread.id, run.id, apiKey);
@@ -125,6 +142,8 @@ app.post('/generate-response', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 1000));
             runStatus = await checkRunStatus(thread.id, run.id, apiKey);
         }
+
+        console.log('Run completed');
 
         // Step 4: Retrieve the messages
         const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
@@ -141,12 +160,16 @@ app.post('/generate-response', async (req, res) => {
         }
 
         const messages = await messagesResponse.json();
-        console.log('Messages retrieved:', messages);
+        const aiResponse = messages.data[0].content[0].text.value;
+        
+        console.log('AI Response:');
+        console.log(aiResponse);
+        console.log('--------------------');
 
-        res.json({ response: messages.data[0].content[0].text.value });
+        res.json({ response: aiResponse });
 
     } catch (error) {
-        console.error(`Error for session ${req.session.id}:`, error.stack || error);
+        console.error('Error:', error.stack || error);
         res.status(500).json({ error: 'Internal Server Error', details: error.message });
     }
 });
@@ -157,19 +180,30 @@ app.post('/clear-context', (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    console.log('--------------------');
+    console.log('Clearing Context:');
+    console.log('Session ID:', req.sessionID);
+    
     req.session.messageHistory = []; // Clear the message history for this session
-    console.log(`Context cleared for session ${req.session.id}`);
+    console.log('Message history cleared');
+    console.log('--------------------');
+    
     res.json({ success: true });
 });
 
 app.post('/keep-alive', (req, res) => {
+    console.log('--------------------');
+    console.log('Keep-Alive Request:');
+    console.log('Session ID:', req.sessionID);
+    
     if (req.session.authenticated) {
-        console.log('Keep-alive request successful');
+        console.log('Keep-alive successful');
         res.sendStatus(200);
     } else {
-        console.log('Keep-alive request failed - not authenticated');
+        console.log('Keep-alive failed - not authenticated');
         res.sendStatus(401);
     }
+    console.log('--------------------');
 });
 
 // Helper function to check the run status
