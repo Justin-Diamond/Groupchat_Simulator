@@ -23,6 +23,9 @@ app.post('/generate-response', async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const assistantId = process.env.OPENAI_ASSISTANT_ID;
 
+    // Log the system prompt
+    console.log('System Prompt:', prompt);
+
     try {
         // Step 1: Create a thread
         const createThreadResponse = await fetch('https://api.openai.com/v1/threads', {
@@ -69,10 +72,10 @@ app.post('/generate-response', async (req, res) => {
         console.log('Run created:', run);
 
         // Step 3: Polling for completion
-        let runStatus = await checkRunStatus(thread.id, run.id);
+        let runStatus = await checkRunStatus(thread.id, run.id, apiKey);
         while (runStatus.status !== 'completed') {
             await new Promise(resolve => setTimeout(resolve, 1000));
-            runStatus = await checkRunStatus(thread.id, run.id);
+            runStatus = await checkRunStatus(thread.id, run.id, apiKey);
         }
 
         // Step 4: Retrieve the messages
@@ -101,9 +104,7 @@ app.post('/generate-response', async (req, res) => {
 });
 
 // Helper function to check the run status
-async function checkRunStatus(threadId, runId) {
-    const apiKey = process.env.OPENAI_API_KEY;
-
+async function checkRunStatus(threadId, runId, apiKey) {
     const response = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
         headers: {
             'Authorization': `Bearer ${apiKey}`,
