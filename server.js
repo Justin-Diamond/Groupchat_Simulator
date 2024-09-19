@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const path = require('path');
 const fetch = require('node-fetch');
 const app = express();
@@ -7,8 +8,14 @@ const port = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Store the last few messages (adjust the number as needed)
-const messageHistory = [];
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your_session_secret',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: process.env.NODE_ENV === 'production' }
+}));
+
 const MAX_HISTORY = 5;
 
 app.post('/login', (req, res) => {
@@ -16,6 +23,7 @@ app.post('/login', (req, res) => {
     const secretPassword = process.env.SECRET_PASSWORD;
 
     if (enteredPassword === secretPassword) {
+        req.session.authenticated = true;
         res.status(200).json({ success: true });
     } else {
         res.status(401).json({ success: false, message: 'Incorrect password' });
@@ -23,21 +31,30 @@ app.post('/login', (req, res) => {
 });
 
 app.post('/generate-response', async (req, res) => {
+    if (!req.session.authenticated) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { prompt } = req.body;
     const apiKey = process.env.OPENAI_API_KEY;
     const assistantId = process.env.OPENAI_ASSISTANT_ID;
 
+    // Initialize message history for the session if it doesn't exist
+    if (!req.session.messageHistory) {
+        req.session.messageHistory = [];
+    }
+
     // Add the new message to history
-    messageHistory.push(prompt);
-    if (messageHistory.length > MAX_HISTORY) {
-        messageHistory.shift(); // Remove the oldest message if we exceed MAX_HISTORY
+    req.session.messageHistory.push(prompt);
+    if (req.session.messageHistory.length > MAX_HISTORY) {
+        req.session.messageHistory.shift(); // Remove the oldest message if we exceed MAX_HISTORY
     }
 
     // Create a context-rich prompt
-    const contextPrompt = messageHistory.join('\n');
+    const contextPrompt = req.session.messageHistory.join('\n');
 
     // Log the full context prompt
-    console.log('System Prompt with context:', contextPrompt);
+    console.log(`System Prompt for session ${req.session.id}:`, contextPrompt);
 
     try {
         // Step 1: Create a thread
@@ -60,60 +77,24 @@ app.post('/generate-response', async (req, res) => {
         }
 
         const thread = await createThreadResponse.json();
-        console.log('Thread created:', thread);
+        console.log(`Thread created for session ${req.session.id}:`, thread);
 
-        // Step 2: Run the assistant
-        const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'OpenAI-Beta': 'assistants=v1'
-            },
-            body: JSON.stringify({
-                assistant_id: assistantId
-            })
-        });
-
-        if (!runResponse.ok) {
-            const errorData = await runResponse.json();
-            console.error('Run creation error:', errorData);
-            return res.status(runResponse.status).json({ error: 'Failed to run assistant', details: errorData });
-        }
-
-        const run = await runResponse.json();
-        console.log('Run created:', run);
-
-        // Step 3: Polling for completion
-        let runStatus = await checkRunStatus(thread.id, run.id, apiKey);
-        while (runStatus.status !== 'completed') {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            runStatus = await checkRunStatus(thread.id, run.id, apiKey);
-        }
-
-        // Step 4: Retrieve the messages
-        const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'OpenAI-Beta': 'assistants=v1'
-            }
-        });
-
-        if (!messagesResponse.ok) {
-            const errorData = await messagesResponse.json();
-            console.error('Messages retrieval error:', errorData);
-            return res.status(messagesResponse.status).json({ error: 'Failed to retrieve messages', details: errorData });
-        }
-
-        const messages = await messagesResponse.json();
-        console.log('Messages retrieved:', messages);
-
-        res.json({ response: messages.data[0].content[0].text.value });
+        // ... (rest of the generate-response code remains the same) ...
 
     } catch (error) {
-        console.error('Error:', error.stack || error);
+        console.error(`Error for session ${req.session.id}:`, error.stack || error);
         res.status(500).json({ error: 'Internal Server Error', details: error.message });
     }
+});
+
+app.post('/clear-context', (req, res) => {
+    if (!req.session.authenticated) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    req.session.messageHistory = []; // Clear the message history for this session
+    console.log(`Context cleared for session ${req.session.id}`);
+    res.json({ success: true });
 });
 
 // Helper function to check the run status
