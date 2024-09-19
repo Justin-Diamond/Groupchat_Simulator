@@ -7,6 +7,10 @@ const port = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// Store the last few messages (adjust the number as needed)
+const messageHistory = [];
+const MAX_HISTORY = 5;
+
 app.post('/login', (req, res) => {
     const enteredPassword = req.body.password;
     const secretPassword = process.env.SECRET_PASSWORD;
@@ -23,8 +27,17 @@ app.post('/generate-response', async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const assistantId = process.env.OPENAI_ASSISTANT_ID;
 
-    // Log the system prompt
-    console.log('System Prompt:', prompt);
+    // Add the new message to history
+    messageHistory.push(prompt);
+    if (messageHistory.length > MAX_HISTORY) {
+        messageHistory.shift(); // Remove the oldest message if we exceed MAX_HISTORY
+    }
+
+    // Create a context-rich prompt
+    const contextPrompt = messageHistory.join('\n');
+
+    // Log the full context prompt
+    console.log('System Prompt with context:', contextPrompt);
 
     try {
         // Step 1: Create a thread
@@ -36,7 +49,7 @@ app.post('/generate-response', async (req, res) => {
                 'OpenAI-Beta': 'assistants=v1'
             },
             body: JSON.stringify({
-                messages: [{ role: "user", content: prompt }]
+                messages: [{ role: "user", content: contextPrompt }]
             })
         });
 
