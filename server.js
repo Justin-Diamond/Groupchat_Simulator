@@ -14,8 +14,8 @@ app.set('trust proxy', 1);
 // Session middleware with more permissive settings
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your_session_secret',
-    resave: true,
-    saveUninitialized: true,
+    resave: false,
+    saveUninitialized: false,
     cookie: { 
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
@@ -23,12 +23,19 @@ app.use(session({
     }
 }));
 
-// Middleware to log session info
+// Middleware to log session info and clear context for new sessions
 app.use((req, res, next) => {
     console.log('--------------------');
     console.log('New Request:');
     console.log('Session ID:', req.sessionID);
     console.log('Is Authenticated:', req.session.authenticated);
+
+    if (!req.session.initialized) {
+        console.log('New session detected. Clearing context.');
+        req.session.messageHistory = [];
+        req.session.initialized = true;
+    }
+
     console.log('--------------------');
     next();
 });
@@ -45,7 +52,8 @@ app.post('/login', (req, res) => {
 
     if (enteredPassword === secretPassword) {
         req.session.authenticated = true;
-        console.log('Login successful');
+        req.session.messageHistory = []; // Clear context on successful login
+        console.log('Login successful. Context cleared.');
         res.status(200).json({ success: true });
     } else {
         console.log('Login failed');
@@ -68,11 +76,6 @@ app.post('/generate-response', async (req, res) => {
     console.log('New Message:');
     console.log('Session ID:', req.sessionID);
     console.log('User Input:', prompt);
-
-    // Initialize message history for the session if it doesn't exist
-    if (!req.session.messageHistory) {
-        req.session.messageHistory = [];
-    }
 
     // Add the new message to history
     req.session.messageHistory.push(prompt);
