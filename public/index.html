@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversation Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            line-height: 1.6;
+        }
+
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1877f2;
+            text-align: center;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        .login-container,
+        .main-container {
+            display: none;
+        }
+
+        .login-container.active,
+        .main-container.active {
+            display: block;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 700;
+            color: #1877f2;
+        }
+
+        input[type="password"],
+        input[type="text"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dddfe2;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #166fe5;
+        }
+
+        #chatContainer {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dddfe2;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            max-width: 70%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 18px;
+            line-height: 1.4;
+        }
+
+        .user-message {
+            background-color: #0084ff;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .ai-message {
+            background-color: #f0f0f0;
+            color: #1c1e21;
+        }
+
+        .loading {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #dddfe2;
+            border-top: 3px solid #1877f2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="login-container active">
+            <h1>Conversation Simulator</h1>
+            <div>
+                <label for="password">Enter Password:</label>
+                <input type="password" id="password" name="password">
+            </div>
+            <button id="login">Login</button>
+        </div>
+
+        <div class="main-container">
+            <h1>Conversation Simulator</h1>
+            <div>
+                <label for="modelSelect">Select Conversation Partner:</label>
+                <select id="modelSelect">
+                    <option value="Sebastian Loredo">Sebastian Loredo</option>
+                    <option value="Schuyler Van Tassel">Schuyler Van Tassel</option>
+                    <option value="Nick Kitevski">Nick Kitevski</option>
+                    <option value="Lizzie Cepeda">Lizzie Cepeda</option>
+                    <option value="Juan Carlos Mora">Juan Carlos Mora</option>
+                    <option value="Dasha Boswell">Dasha Boswell</option>
+                    <option value="Sophie Gengler">Sophie Gengler</option>
+                    <option value="Ian Ching">Ian Ching</option>
+                    <option value="Ethan Davis">Ethan Davis</option>
+                    <option value="Adam Bennett">Adam Bennett</option>
+                    <option value="Matt Lopez">Matt Lopez</option>
+                </select>
+            </div>
+            <div id="chatContainer"></div>
+            <div>
+                <textarea id="userInput" rows="3" placeholder="Type your message here..."></textarea>
+            </div>
+            <button id="sendMessage">Send Message</button>
+            <div id="loading" class="loading" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('login').addEventListener('click', function () {
+            const enteredPassword = document.getElementById('password').value;
+
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ password: enteredPassword })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.querySelector('.login-container').classList.remove('active');
+                    document.querySelector('.main-container').classList.add('active');
+                } else {
+                    alert('Incorrect password!');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        });
+        
+        document.getElementById('sendMessage').addEventListener('click', async function () {
+            const userInput = document.getElementById('userInput').value;
+            const selectedModel = document.getElementById('modelSelect').value;
+            const chatContainer = document.getElementById('chatContainer');
+
+            // Display user message
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'message user-message';
+            userMessageDiv.textContent = userInput;
+            chatContainer.appendChild(userMessageDiv);
+
+            // Clear user input
+            document.getElementById('userInput').value = '';
+
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+
+            const prompt = `${selectedModel}: ${userInput}`;
+
+            try {
+                const response = await fetch('/generate-response', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                const data = await response.json();
+                
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+
+                // Display AI message
+                const aiMessageDiv = document.createElement('div');
+                aiMessageDiv.className = 'message ai-message';
+                aiMessageDiv.textContent = data.response;
+                chatContainer.appendChild(aiMessageDiv);
+
+                // Scroll to bottom of chat container
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while generating the response.');
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+
+</html>
