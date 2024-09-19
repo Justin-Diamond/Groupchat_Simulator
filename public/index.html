@@ -80,7 +80,7 @@
 
         .button-container {
             display: flex;
-            justify-content: center; /* Center the login button */
+            justify-content: center;
             margin-top: 20px;
             padding: 0 15px;
         }
@@ -98,7 +98,7 @@
         }
 
         .main-container .button-container {
-            justify-content: space-between; /* Keep the main buttons spread out */
+            justify-content: space-between;
         }
 
         .main-container .button-container button {
@@ -195,7 +195,6 @@
                 <label for="modelSelect">Who are you messaging as?</label>
                 <select id="modelSelect">
                     <option value="Sebastian Loredo">Sebastian Loredo</option>
-                    <option value="Justin Diamond">Justin Diamond</option>
                     <option value="Schuyler Van Tassel">Schuyler Van Tassel</option>
                     <option value="Nick Kitevski">Nick Kitevski</option>
                     <option value="Lizzie Cepeda">Lizzie Cepeda</option>
@@ -223,6 +222,43 @@
 
     <script>
         let lastAiMessage = '';
+        let keepAliveInterval;
+
+        function handleSessionExpiration() {
+            console.log('Session expired');
+            alert('Your session has expired. Please log in again.');
+            document.querySelector('.main-container').classList.remove('active');
+            document.querySelector('.login-container').classList.add('active');
+            stopKeepAlive();
+        }
+
+        function startKeepAlive() {
+            keepAliveInterval = setInterval(sendKeepAlive, 5 * 60 * 1000); // every 5 minutes
+        }
+
+        function stopKeepAlive() {
+            clearInterval(keepAliveInterval);
+        }
+
+        function sendKeepAlive() {
+            console.log('Sending keep-alive request');
+            fetch('/keep-alive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log('Keep-alive response status:', response.status);
+                if (!response.ok) {
+                    throw new Error('Keep-alive failed');
+                }
+            })
+            .catch(error => {
+                console.error('Keep-alive error:', error);
+                handleSessionExpiration();
+            });
+        }
 
         document.getElementById('login').addEventListener('click', function () {
             const enteredPassword = document.getElementById('password').value;
@@ -237,9 +273,12 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
+                    console.log('Login successful');
                     document.querySelector('.login-container').classList.remove('active');
                     document.querySelector('.main-container').classList.add('active');
+                    startKeepAlive();
                 } else {
+                    console.log('Login failed');
                     alert('Incorrect password!');
                 }
             })
@@ -275,9 +314,7 @@
                 });
 
                 if (response.status === 401) {
-                    // Session expired or unauthorized
-                    alert('Your session has expired. Please log in again.');
-                    location.reload(); // Reload the page to show login screen
+                    handleSessionExpiration();
                     return;
                 }
 
@@ -316,9 +353,15 @@
                     'Content-Type': 'application/json'
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.status === 401) {
+                    handleSessionExpiration();
+                    return;
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.success) {
+                if (data && data.success) {
                     console.log('Context cleared successfully');
                 } else {
                     console.error('Failed to clear context');
@@ -330,6 +373,10 @@
         document.getElementById('sendMessage').addEventListener('click', () => sendMessage(false));
         document.getElementById('otherReply').addEventListener('click', () => sendMessage(true));
         document.getElementById('clearChat').addEventListener('click', clearChat);
+
+        // Stop the keep-alive mechanism when the window is closed or navigated away from
+        window.addEventListener('beforeunload', stopKeepAlive);
     </script>
 </body>
+
 </html>
