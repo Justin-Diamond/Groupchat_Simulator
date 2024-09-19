@@ -222,7 +222,6 @@
     </div>
 
     <script>
-        // The JavaScript remains the same as in the previous version
         let lastAiMessage = '';
 
         document.getElementById('login').addEventListener('click', function () {
@@ -275,6 +274,13 @@
                     body: JSON.stringify({ prompt })
                 });
 
+                if (response.status === 401) {
+                    // Session expired or unauthorized
+                    alert('Your session has expired. Please log in again.');
+                    location.reload(); // Reload the page to show login screen
+                    return;
+                }
+
                 const data = await response.json();
                 
                 // Hide loading indicator
@@ -302,6 +308,23 @@
             const chatContainer = document.getElementById('chatContainer');
             chatContainer.innerHTML = '';
             lastAiMessage = '';
+
+            // Send request to clear context on the server
+            fetch('/clear-context', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('Context cleared successfully');
+                } else {
+                    console.error('Failed to clear context');
+                }
+            })
+            .catch(error => console.error('Error:', error));
         }
 
         document.getElementById('sendMessage').addEventListener('click', () => sendMessage(false));
@@ -309,5 +332,4 @@
         document.getElementById('clearChat').addEventListener('click', clearChat);
     </script>
 </body>
-
 </html>
