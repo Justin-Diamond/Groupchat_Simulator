@@ -17,7 +17,7 @@ app.post('/generate-report', async (req, res) => {
 
     try {
         // Step 1: Create a Thread
-        const threadResponse = await fetch('https://api.openai.com/v1/threads', {
+        const threadResponse = await fetch('https://api.openai.com/v2/threads', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -40,7 +40,7 @@ app.post('/generate-report', async (req, res) => {
         console.log('Thread Created:', threadId);
 
         // Step 2: Add Message to Thread
-        const messageResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+        const messageResponse = await fetch(`https://api.openai.com/v2/threads/${threadId}/messages`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -54,7 +54,7 @@ app.post('/generate-report', async (req, res) => {
         console.log('Message added to thread');
 
         // Step 3: Start Assistant Run
-        const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+        const runResponse = await fetch(`https://api.openai.com/v2/threads/${threadId}/runs`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -85,7 +85,7 @@ app.post('/generate-report', async (req, res) => {
         let runStatus = 'in_progress';
         while (runStatus === 'in_progress' || runStatus === 'queued') {
             await new Promise(resolve => setTimeout(resolve, 2000));
-            const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+            const statusResponse = await fetch(`https://api.openai.com/v2/threads/${threadId}/runs/${runId}`, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'OpenAI-Beta': 'assistants=v2'
@@ -101,7 +101,7 @@ app.post('/generate-report', async (req, res) => {
         }
 
         // Step 5: Retrieve Assistant Response
-        const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+        const messagesResponse = await fetch(`https://api.openai.com/v2/threads/${threadId}/messages`, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'OpenAI-Beta': 'assistants=v2'
