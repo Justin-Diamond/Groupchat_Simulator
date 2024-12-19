@@ -31,12 +31,21 @@ app.post('/generate-report', async (req, res) => {
                     { type: "code_interpreter" }
                 ],
                 tool_resources: {
-                    file_search: { vector_store_ids: [] }
+                    file_search: {
+                        vector_store_ids: [] // Add vector store IDs if applicable
+                    },
+                    code_interpreter: {
+                        file_ids: [] // Add file IDs if using a code interpreter
+                    }
                 }
             })
         });
 
-        if (!threadResponse.ok) throw new Error('Failed to create thread.');
+        if (!threadResponse.ok) {
+            const errorText = await threadResponse.text();
+            throw new Error(`Thread creation failed: ${errorText}`);
+        }
+
         const threadData = await threadResponse.json();
         const threadId = threadData.id;
         console.log('Thread Created:', threadId);
@@ -55,7 +64,11 @@ app.post('/generate-report', async (req, res) => {
             })
         });
 
-        if (!messageResponse.ok) throw new Error('Failed to add message to thread.');
+        if (!messageResponse.ok) {
+            const errorText = await messageResponse.text();
+            throw new Error(`Message addition failed: ${errorText}`);
+        }
+
         console.log('Message added to thread');
 
         // Step 3: Start Assistant Run
@@ -69,15 +82,16 @@ app.post('/generate-report', async (req, res) => {
             body: JSON.stringify({
                 assistant_id: assistantId,
                 tool_resources: {
-                    file_search: { vector_store_ids: [] }
+                    file_search: { vector_store_ids: [] },
+                    code_interpreter: { file_ids: [] }
                 }
             })
         });
 
         if (!runResponse.ok) {
-            const errorDetails = await runResponse.text();
-            console.error('Run initiation failed:', errorDetails);
-            throw new Error('Failed to start assistant run.');
+            const errorText = await runResponse.text();
+            console.error('Run initiation failed:', errorText);
+            throw new Error(`Run initiation failed: ${errorText}`);
         }
 
         const runData = await runResponse.json();
@@ -95,12 +109,12 @@ app.post('/generate-report', async (req, res) => {
                 }
             });
 
-            if (!statusResponse.ok) throw new Error('Failed to check run status.');
+            if (!statusResponse.ok) throw new Error('Failed to fetch run status.');
+
             const statusData = await statusResponse.json();
             runStatus = statusData.status;
 
             if (statusData.last_error) {
-                console.error('Run Error:', statusData.last_error.message);
                 throw new Error(`Run failed: ${statusData.last_error.message}`);
             }
         }
@@ -114,6 +128,7 @@ app.post('/generate-report', async (req, res) => {
         });
 
         if (!messagesResponse.ok) throw new Error('Failed to retrieve messages.');
+
         const messagesData = await messagesResponse.json();
         const assistantMessage = messagesData.data.find(msg => msg.role === 'assistant');
         const responseContent = assistantMessage?.content[0]?.text?.value || 'No content received.';
