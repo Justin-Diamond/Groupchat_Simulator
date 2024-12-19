@@ -2,69 +2,49 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const fetch = require('node-fetch');
+require('dotenv').config();
+
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Trust first proxy for secure cookies in production
-app.set('trust proxy', 1);
-
-// Session middleware with more permissive settings
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'your_session_secret',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
-
-// Middleware to log session info and clear context for new sessions
-app.use((req, res, next) => {
-    console.log('--------------------');
-    console.log('New Request:');
-    console.log('Session ID:', req.sessionID);
-    console.log('Is Authenticated:', req.session.authenticated);
-
-    if (!req.session.initialized) {
-        console.log('New session detected. Clearing context.');
-        req.session.messageHistory = [];
-        req.session.initialized = true;
-    }
-
-    console.log('--------------------');
-    next();
-});
+// Session middleware
+app.use(
+    session({
+        secret: process.env.SESSION_SECRET || 'your_session_secret',
+        resave: false,
+        saveUninitialized: true,
+        cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true },
+    })
+);
 
 const MAX_HISTORY = 5;
 
-app.post('/login', (req, res) => {
-    const enteredPassword = req.body.password;
-    const secretPassword = process.env.SECRET_PASSWORD;
-
-    console.log('--------------------');
-    console.log('Login Attempt:');
-    console.log('Session ID:', req.sessionID);
-
-    if (enteredPassword === secretPassword) {
-        req.session.authenticated = true;
-        req.session.messageHistory = []; // Clear context on successful login
-        console.log('Login successful. Context cleared.');
-        res.status(200).json({ success: true });
-    } else {
-        console.log('Login failed');
-        res.status(401).json({ success: false, message: 'Incorrect password' });
+// Middleware for session management
+app.use((req, res, next) => {
+    if (!req.session.messageHistory) {
+        req.session.messageHistory = [];
     }
-    console.log('--------------------');
+    next();
 });
 
-app.post('/generate-response', async (req, res) => {
+// Helper to check run status
+async function checkRunStatus(threadId, runId, apiKey) {
+    const response = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'OpenAI-Beta': 'assistants=v2',
+        },
+    });
+    if (!response.ok) throw new Error('Failed to check run status.');
+    return await response.json();
+}
+
+// Endpoint to generate report
+app.post('/generate-report', async (req, res) => {
     if (!req.session.authenticated) {
-        console.log('Unauthorized access attempt');
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
@@ -72,162 +52,107 @@ app.post('/generate-response', async (req, res) => {
     const apiKey = process.env.OPENAI_API_KEY;
     const assistantId = process.env.OPENAI_ASSISTANT_ID;
 
-    console.log('--------------------');
-    console.log('New Message:');
-    console.log('Session ID:', req.sessionID);
-    console.log('User Input:', prompt);
-
-    // Add the new message to history
+    // Add prompt to history and manage session context
     req.session.messageHistory.push(prompt);
     if (req.session.messageHistory.length > MAX_HISTORY) {
-        req.session.messageHistory.shift(); // Remove the oldest message if we exceed MAX_HISTORY
+        req.session.messageHistory.shift();
     }
 
-    console.log('Updated Message History:');
-    req.session.messageHistory.forEach((msg, index) => {
-        console.log(`[${index + 1}] ${msg}`);
-    });
-
-    // Create a context-rich prompt
-    const contextPrompt = req.session.messageHistory.join('\n');
-
-    console.log('Full Context Prompt:');
-    console.log(contextPrompt);
-
     try {
-        // Step 1: Create a thread
-        const createThreadResponse = await fetch('https://api.openai.com/v1/threads', {
+        // Step 1: Create thread
+        const threadResponse = await fetch('https://api.openai.com/v1/threads', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
-                'OpenAI-Beta': 'assistants=v1'
+                'OpenAI-Beta': 'assistants=v2',
             },
-            body: JSON.stringify({
-                messages: [{ role: "user", content: contextPrompt }]
-            })
+            body: JSON.stringify({}),
         });
 
-        if (!createThreadResponse.ok) {
-            const errorData = await createThreadResponse.json();
-            console.error('Thread creation error:', errorData);
-            return res.status(createThreadResponse.status).json({ error: 'Failed to create thread', details: errorData });
-        }
+        if (!threadResponse.ok) throw new Error('Failed to create thread.');
+        const threadData = await threadResponse.json();
+        const threadId = threadData.id;
 
-        const thread = await createThreadResponse.json();
-        console.log('Thread created:', thread.id);
-
-        // Step 2: Run the assistant
-        const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
+        // Step 2: Add message to thread
+        await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
-                'OpenAI-Beta': 'assistants=v1'
+                'OpenAI-Beta': 'assistants=v2',
             },
-            body: JSON.stringify({
-                assistant_id: assistantId
-            })
+            body: JSON.stringify({ role: 'user', content: req.session.messageHistory.join('\n') }),
         });
 
-        if (!runResponse.ok) {
-            const errorData = await runResponse.json();
-            console.error('Run creation error:', errorData);
-            return res.status(runResponse.status).json({ error: 'Failed to run assistant', details: errorData });
-        }
-
-        const run = await runResponse.json();
-        console.log('Run created:', run.id);
-
-        // Step 3: Polling for completion
-        let runStatus = await checkRunStatus(thread.id, run.id, apiKey);
-        while (runStatus.status !== 'completed') {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            runStatus = await checkRunStatus(thread.id, run.id, apiKey);
-        }
-
-        console.log('Run completed');
-
-        // Step 4: Retrieve the messages
-        const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
+        // Step 3: Start assistant run
+        const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+            method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'OpenAI-Beta': 'assistants=v1'
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'assistants=v2',
+            },
+            body: JSON.stringify({
+                assistant_id: assistantId,
+                tool_resources: {}, // Add resources if applicable
+            }),
+        });
+
+        if (!runResponse.ok) throw new Error('Failed to start assistant run.');
+        const runData = await runResponse.json();
+        const runId = runData.id;
+
+        // Step 4: Poll for run completion
+        let runStatus = 'in_progress';
+        while (runStatus === 'in_progress' || runStatus === 'queued') {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            const statusData = await checkRunStatus(threadId, runId, apiKey);
+            runStatus = statusData.status;
+            if (statusData.last_error) {
+                throw new Error(`Run failed: ${statusData.last_error.message}`);
             }
-        });
-
-        if (!messagesResponse.ok) {
-            const errorData = await messagesResponse.json();
-            console.error('Messages retrieval error:', errorData);
-            return res.status(messagesResponse.status).json({ error: 'Failed to retrieve messages', details: errorData });
         }
 
-        const messages = await messagesResponse.json();
-        const aiResponse = messages.data[0].content[0].text.value;
-        
-        console.log('AI Response:');
-        console.log(aiResponse);
-        console.log('--------------------');
+        // Step 5: Retrieve assistant response
+        const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'OpenAI-Beta': 'assistants=v2',
+            },
+        });
 
-        res.json({ response: aiResponse });
+        if (!messagesResponse.ok) throw new Error('Failed to retrieve messages.');
+        const messagesData = await messagesResponse.json();
+        const assistantMessage = messagesData.data.find((msg) => msg.role === 'assistant');
+        const responseContent = assistantMessage?.content[0]?.text?.value || 'No response received.';
 
+        res.json({ response: responseContent });
     } catch (error) {
-        console.error('Error:', error.stack || error);
-        res.status(500).json({ error: 'Internal Server Error', details: error.message });
+        console.error('Error:', error.message);
+        res.status(500).json({ error: error.message });
     }
 });
 
-app.post('/clear-context', (req, res) => {
-    if (!req.session.authenticated) {
-        console.log('Unauthorized clear context attempt');
-        return res.status(401).json({ error: 'Unauthorized' });
+// Login endpoint
+app.post('/login', (req, res) => {
+    const { password } = req.body;
+    if (password === process.env.SECRET_PASSWORD) {
+        req.session.authenticated = true;
+        req.session.messageHistory = [];
+        res.json({ success: true });
+    } else {
+        res.status(401).json({ success: false });
     }
+});
 
-    console.log('--------------------');
-    console.log('Clearing Context:');
-    console.log('Session ID:', req.sessionID);
-    
-    req.session.messageHistory = []; // Clear the message history for this session
-    console.log('Message history cleared');
-    console.log('--------------------');
-    
+// Context clearing
+app.post('/clear-context', (req, res) => {
+    req.session.messageHistory = [];
     res.json({ success: true });
 });
 
-app.post('/keep-alive', (req, res) => {
-    console.log('--------------------');
-    console.log('Keep-Alive Request:');
-    console.log('Session ID:', req.sessionID);
-    
-    if (req.session.authenticated) {
-        console.log('Keep-alive successful');
-        res.sendStatus(200);
-    } else {
-        console.log('Keep-alive failed - not authenticated');
-        res.sendStatus(401);
-    }
-    console.log('--------------------');
-});
-
-// Helper function to check the run status
-async function checkRunStatus(threadId, runId, apiKey) {
-    const response = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'OpenAI-Beta': 'assistants=v1'
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`Failed to check run status: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json();
-}
-
+// Start server
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    console.log('Session Secret:', process.env.SESSION_SECRET ? 'Set' : 'Not Set');
-    console.log('Secret Password:', process.env.SECRET_PASSWORD ? 'Set' : 'Not Set');
 });
